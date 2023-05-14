@@ -165,6 +165,14 @@ ratings = [
     (2, 8),
 ]
 
+years = [
+    # year, name
+    (2020, "Two Zero Two Zero"),
+    (2000, "Two Zero Zero Zero"),
+    (2100, "Two One Zero Zero"),
+    (1999, "One Nine Nine Nine")
+]
+
 # SELECT * FROM movies;
 select(SeqScanIterator(InMemoryIterator(movies)))
 print()
@@ -187,3 +195,10 @@ print()
 
 # SELECT * FROM movies JOIN ratings ON movies.movie_id = ratings.movie_id;
 select(NestedLoopJoinIterator(SeqScanIterator(InMemoryIterator(movies)), SeqScanIterator(InMemoryIterator(ratings)), 0, 0))
+print()
+
+# SELECT * FROM movies 
+# JOIN ratings ON movies.movie_id = ratings.movie_id
+# JOIN years on movies.year = years.year
+select(NestedLoopJoinIterator(NestedLoopJoinIterator(SeqScanIterator(InMemoryIterator(movies)), SeqScanIterator(InMemoryIterator(ratings)), 0, 0), SeqScanIterator(InMemoryIterator(years)), 2, 0))
+print()
