@@ -90,41 +90,60 @@ class PredicateIterator:
         return row
 
 class NestedLoopJoinIterator:
-    # TODO: According to the EXPLAIN result, the first item should be return right away \
-    # instead of doing two full table scan inside the init of the Iterator, one way to do \
-    # is use next() and keep track of the state
 
     def __init__(self, it1, it2, col_idx1, col_idx2):
-        self.materialize_t1 = list(it1)
-        self.materialize_t2 = list(it2)
+        self.it1 = it1
+        self.it2 = it2
         self.col_idx1 = col_idx1
         self.col_idx2 = col_idx2
-        self.cur_row1 = 0
-        self.cur_row2 = 0
         self.next_row = None
-        self._advance_to_match()
+
+        self.complete_full_scan = True
+        self.current_row_t1 = None
+        self.materialize = []
+        self.t2_idx = 0
+        self.materialized_mode = False
 
     def _advance_to_match(self):
-        for idx1 in range(self.cur_row1, len(self.materialize_t1)):
-            for idx2 in range(self.cur_row2, len(self.materialize_t2)):
-                row1 = self.materialize_t1[idx1]
-                row2 = self.materialize_t2[idx2]
-                if row1[self.col_idx1] == row2[self.col_idx2]:
-                    self.next_row = row1 + row2
-                    self.cur_row2 = idx2 + 1
+        while True:
+            if self.complete_full_scan:
+                try:
+                    self.current_row_t1 = next(self.it1)
+                    self.complete_full_scan = False
+                except StopIteration:
+                    self.next_row = None
                     return
-            self.cur_row2 = 0
-            self.cur_row1 = idx1 + 1
-        self.next_row = None
+
+            if not self.materialized_mode:
+                try:
+                    current_row_t2 = next(self.it2)
+                    self.materialize.append(current_row_t2)
+                    if current_row_t2[self.col_idx2] == self.current_row_t1[self.col_idx1]:
+                        self.next_row = self.current_row_t1 + current_row_t2
+                        return
+                except StopIteration:
+                    self.materialized_mode = True
+                    self.complete_full_scan = True
+            else:
+                if self.t2_idx >= len(self.materialize):
+                    self.complete_full_scan = True
+                    self.t2_idx = 0
+                    continue
+                if self.materialize[self.t2_idx][self.col_idx2] == self.current_row_t1[self.col_idx1]:
+                    self.next_row = self.current_row_t1 + self.materialize[self.t2_idx]
+                    self.t2_idx += 1
+                    return
+                else:
+                    self.t2_idx += 1
 
     def __iter__(self):
         return self
     
     def __next__(self):
+        self._advance_to_match()
         if self.next_row == None:
             raise StopIteration
         row = self.next_row
-        self._advance_to_match()
         return row
 
 movies = [
@@ -144,7 +163,6 @@ ratings = [
     (4, 5),
     (5, 6),
     (2, 8),
-    (10, 1)
 ]
 
 # SELECT * FROM movies;
